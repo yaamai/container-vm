@@ -4,10 +4,13 @@ BASE_IMAGE_FILE=$(readlink -f $1)
 NUM_OF_VM=${2:-1}
 
 function main() {
+  [[ ! -e $BASE_IMAGE_FILE ]] && ( echo "Image not found"; exit 1 )
+
+  wait_libvirtd
 
   for ((num=1; num<$((NUM_OF_VM+1)); num++)); do
     name=$(printf "%s-%02d" $HOSTNAME $num)
-    data_dir=${DATA_DIR_BASE:-$PWD}/$name
+    data_dir=${DATA_DIR_BASE:-$PWD/libvirtd}/$name
     mkdir -p $data_dir
 
     prepare_cloud_config $data_dir/cloud-config.iso
@@ -18,6 +21,16 @@ function main() {
       $data_dir/cloud-config.iso \
       $(printf "02:42:ac:11:00:%02d" $num) \
       $(printf "192.168.122.%s" $num)
+  done
+}
+
+function wait_libvirtd() {
+  cnt=0
+  while [[ $cnt -lt 10 ]]; do
+    virsh list
+    [[ $? -eq 0 ]] && break
+    sleep 3
+    cnt=$((cnt + 1))
   done
 }
 
