@@ -13,14 +13,22 @@ function main() {
     data_dir=${DATA_DIR_BASE:-$PWD/libvirtd}/$name
     mkdir -p $data_dir
 
-    prepare_cloud_config $data_dir/cloud-config.iso
-    prepare_image $data_dir/instance.qcow2 $BASE_IMAGE_FILE
+    if ! check_file_exists $data_dir/cloud-config.iso; then
+      prepare_cloud_config $data_dir/cloud-config.iso
+    fi
+
+    if ! check_file_exists $data_dir/instance.qcow2; then
+      prepare_image $data_dir/instance.qcow2 $BASE_IMAGE_FILE
+    fi
+
+    # expect vm-definition not persisteed
     launch_vm \
       $name \
       $data_dir/instance.qcow2 \
       $data_dir/cloud-config.iso \
       $(printf "02:42:ac:11:00:%02d" $num) \
       $(printf "192.168.122.%s" $num)
+
   done
 }
 
@@ -32,6 +40,15 @@ function wait_libvirtd() {
     sleep 3
     cnt=$((cnt + 1))
   done
+}
+
+function check_file_exists() {
+  local path=$1
+  if [[ -e $path ]]; then
+    true; return $?
+  fi
+
+  false; return $?
 }
 
 function prepare_cloud_config() {
