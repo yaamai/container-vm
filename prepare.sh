@@ -2,11 +2,13 @@
 
 BASE_IMAGE_FILE=$(readlink -f $1)
 NUM_OF_VM=${2:-1}
+BASE_FORWARD_PORT=${3:-14000}
 
 function main() {
   [[ ! -e $BASE_IMAGE_FILE ]] && ( echo "Image not found"; exit 1 )
 
   wait_libvirtd
+  fw_allow_ssh_forward
 
   for ((num=1; num<$((NUM_OF_VM+1)); num++)); do
     name=$(printf "%s-%02d" $HOSTNAME $num)
@@ -21,6 +23,8 @@ function main() {
       prepare_image $data_dir/instance.qcow2 $BASE_IMAGE_FILE
     fi
 
+    fw_dnat_ssh $(printf "192.168.122.%s" $num) $((BASE_FORWARD_PORT + num))
+
     # expect vm-definition not persisteed
     launch_vm \
       $name \
@@ -30,6 +34,16 @@ function main() {
       $(printf "192.168.122.%s" $num)
 
   done
+}
+
+function fw_dnat_ssh() {
+  addr=$1
+  port=$2
+  iptables -t nat -I PREROUTING -p tcp --dport $port -j DNAT --to-destination $addr:22
+}
+
+function fw_allow_ssh_forward() {
+  iptables -I FORWARD -p tcp --dport 22 -d 192.168.122.0/24 -j ACCEPT
 }
 
 function wait_libvirtd() {
