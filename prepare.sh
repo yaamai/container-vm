@@ -90,7 +90,7 @@ EOF
 function prepare_image() {
   local path=$1
   local image=$2
-  local size=${3:-16G}
+  local size=${3:-${VM_DISK_SIZE:-16G}}
 
   qemu-img create \
     -f qcow2 \
@@ -105,8 +105,8 @@ function launch_vm() {
   local config_image=$3
   local mac=${4:-"02:42:ac:11:00:04"}
   local ip=${5:-"192.168.122.10"}
-  local ram=${6:-1024}
-  local cpu=${7:-1}
+  local ram=${6:-${VM_RAM_SIZE:-1024}}
+  local cpu=${7:-${VM_CPU_NUM:-1}}
 
   virsh net-update default delete ip-dhcp-host "<host mac='$mac' ip='$ip'/>" --live --config || true
   virsh net-update default add-last ip-dhcp-host "<host mac='$mac' ip='$ip'/>" --live --config
