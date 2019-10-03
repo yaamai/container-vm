@@ -90,7 +90,7 @@ EOF
 function prepare_image() {
   local path=$1
   local image=$2
-  local size=${3:-5G}
+  local size=${3:-16G}
 
   qemu-img create \
     -f qcow2 \
