@@ -13,7 +13,7 @@ run: build
 	  yaamai/alpine-qemu:latest \
 	    images/arch-openstack-2019-09-05-06-25-image-bootstrap-0.9.2.1-81-gcbb5fd6.qcow2
 attach:
-	docker attach vm --detach-keys=ctrl-t
+	docker attach vm --detach-keys=ctrl-]
 stop:
 	docker stop vm
 build: Dockerfile entrypoint.sh
