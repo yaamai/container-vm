@@ -5,6 +5,7 @@ run: build
 	  --rm \
 	  -itd \
 	  --privileged \
+	  -p 13307:22 \
 	  -p 13306:5900 \
 	  -v /dev/kvm:/dev/kvm \
 	  -v $$PWD:/work \
