@@ -3,14 +3,16 @@
 BASE_IMAGE_FILE=$(readlink -f $1)
 MEMORY=${2:-512}
 CPU=${3:-2}
+shift 3;
 
 function main() {
   name=$(printf "%s" $HOSTNAME)
   data_dir=${DATA_DIR_BASE:-$PWD/vms}/$name
   mkdir -p $data_dir
 
+  prepare_cloud_config $data_dir/cloud-config.iso "$@"
   if ! check_file_exists $data_dir/cloud-config.iso; then
-    prepare_cloud_config $data_dir/cloud-config.iso
+    prepare_cloud_config $data_dir/cloud-config.iso "$@"
   fi
 
   if ! check_file_exists $data_dir/instance.qcow2; then
@@ -49,13 +51,27 @@ function check_file_exists() {
 
 function prepare_cloud_config() {
   local path=$1
+  shift 1
   local base_path=$(dirname $path)
 
   cat >$base_path/meta-data <<EOF
 local-hostname: $HOSTNAME
 EOF
 
-  cat >$base_path/user-data <<EOF
+  if [[ ${#} -gt 0 ]]; then
+    local FILE_LIST=""
+    for f in "$@"; do
+      case $f in
+        *cloud-config*) FILE_LIST="$FILE_LIST $f:text/cloud-config";;
+        *) FILE_LIST="$FILE_LIST $f:text/x-shellscript";;
+      esac
+    done
+
+    write-mime-multipart \
+      --output $base_path/user-data \
+      $FILE_LIST
+  else
+    cat >$base_path/user-data <<EOF
 #cloud-config
 
 password: Passw0rd1234
@@ -63,6 +79,7 @@ chpasswd: {expire: False}
 ssh_pwauth: True
 disable_root: True
 EOF
+  fi
 
   genisoimage \
     -output $path \
@@ -82,4 +99,4 @@ function prepare_image() {
     $size
 }
 
-main
+main "$@"
