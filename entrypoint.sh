@@ -6,7 +6,7 @@ CPU=${3:-2}
 
 function main() {
   name=$(printf "%s" $HOSTNAME)
-  data_dir=${DATA_DIR_BASE:-$PWD/libvirtd}/$name
+  data_dir=${DATA_DIR_BASE:-$PWD/vms}/$name
   mkdir -p $data_dir
 
   if ! check_file_exists $data_dir/cloud-config.iso; then
