@@ -19,7 +19,9 @@ function main() {
 
   qemu-system-x86_64 \
     --enable-kvm \
-    -drive file=$data_dir/instance.qcow2,format=qcow2 \
+    -object iothread,id=io1 \
+    -device virtio-blk-pci,drive=disk0,iothread=io1 \
+    -drive if=none,id=disk0,cache=none,format=qcow2,aio=threads,file=$data_dir/instance.qcow2 \
     -cdrom $data_dir/cloud-config.iso \
     -display vnc=:0 \
     -m $MEMORY \
