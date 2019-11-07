@@ -3,16 +3,16 @@
 BASE_IMAGE_FILE=$(readlink -f $1)
 MEMORY=${2:-512}
 CPU=${3:-2}
-shift 3;
+CLOUD_CONFIG=${4:-""}
 
 function main() {
   name=$(printf "%s" $HOSTNAME)
   data_dir=${DATA_DIR_BASE:-$PWD/vms}/$name
   mkdir -p $data_dir
 
-  prepare_cloud_config $data_dir/cloud-config.iso "$@"
+  prepare_cloud_config $data_dir/cloud-config.iso $CLOUD_CONFIG
   if ! check_file_exists $data_dir/cloud-config.iso; then
-    prepare_cloud_config $data_dir/cloud-config.iso "$@"
+    prepare_cloud_config $data_dir/cloud-config.iso $CLOUD_CONFIG
   fi
 
   if ! check_file_exists $data_dir/instance.qcow2; then
@@ -51,25 +51,15 @@ function check_file_exists() {
 
 function prepare_cloud_config() {
   local path=$1
-  shift 1
+  local cloud_config=$2
   local base_path=$(dirname $path)
 
   cat >$base_path/meta-data <<EOF
 local-hostname: $HOSTNAME
 EOF
 
-  if [[ ${#} -gt 0 ]]; then
-    local FILE_LIST=""
-    for f in "$@"; do
-      case $f in
-        *cloud-config*) FILE_LIST="$FILE_LIST $f:text/cloud-config";;
-        *) FILE_LIST="$FILE_LIST $f:text/x-shellscript";;
-      esac
-    done
-
-    write-mime-multipart \
-      --output $base_path/user-data \
-      $FILE_LIST
+  if [[ ! -z $cloud_config ]]; then
+    cp -f $cloud_config $base_path/user-data
   else
     cat >$base_path/user-data <<EOF
 #cloud-config
