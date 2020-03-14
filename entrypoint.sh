@@ -32,7 +32,10 @@ main() {
 
   while true; do
     pty="$(grep -Eo '/dev/pts/[0-9]+' < "/tmp/qemu-$name-stdout.log")"
-    if minicom -p "$pty"; then
+    if [ ! -e "$pty" ]; then
+      break
+    fi
+    if picocom "$pty"; then
       break
     fi
   done
