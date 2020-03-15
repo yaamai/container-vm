@@ -1,17 +1,17 @@
 #!/bin/ash -x
 
-BASE_IMAGE_FILE=$(readlink -f "$1")
-MEMORY=${2:-512}
-CPU=${3:-2}
-CLOUD_CONFIG=${4:-""}
-HOSTNAME=$(hostname -s)
+BASE_IMAGE_FILE=$(readlink -f "${1:-${VM_IMAGE}}")
+MEMORY=${2:-${VM_MEMORY:-512}}
+CPU=${3:-${VM_CPU:-2}}
+CLOUD_CONFIG=${4:-${VM_CLOUD_CONFIG:-""}}
+SCRIPT=${5:-${VM_SCRIPT:-""}}
 
 main() {
-  name=$(printf "%s" "$HOSTNAME")
+  name=$(printf "%s" "$(hostname -s)")
   data_dir=${DATA_DIR_BASE:-$PWD/vms}/$name
   mkdir -p "$data_dir"
 
-  prepare_cloud_config "$data_dir/cloud-config.iso" "$CLOUD_CONFIG"
+  prepare_cloud_config "$name" "$data_dir/cloud-config.iso" "$CLOUD_CONFIG" "$SCRIPT"
 
   if ! check_file_exists "$data_dir/instance.qcow2"; then
     prepare_image "$data_dir/instance.qcow2" "$BASE_IMAGE_FILE"
@@ -51,19 +51,21 @@ check_file_exists() {
 }
 
 prepare_cloud_config() {
-  local path=$1
-  local cloud_config=$2
+  local name=$1
+  local path=$2
+  local cloud_config=$3
+  local script=$4
   local base_path
   base_path="$(dirname "$path")"
 
   cat > "$base_path/meta-data" <<EOF
-local-hostname: $HOSTNAME
+local-hostname: $name
 EOF
 
   if [ -n "$cloud_config" ]; then
-    cp -f "$cloud_config" "$base_path/user-data"
+    cp -f "$cloud_config" "$base_path/cloud-config"
   else
-    cat > "$base_path/user-data" <<EOF
+    cat > "$base_path/cloud-config" <<EOF
 #cloud-config
 
 password: Passw0rd1234
@@ -71,6 +73,16 @@ chpasswd: {expire: False}
 ssh_pwauth: True
 disable_root: True
 EOF
+  fi
+
+  if [ -n "$script" ]; then
+    cp -f "$script" "$base_path/script"
+    python2 /usr/local/bin/write-mime-multipart \
+      --output "$base_path/user-data" \
+      "$base_path/cloud-config:text/cloud-config" \
+      "$base_path/script:text/x-shellscript"
+  else
+    cp -f "$base_path/cloud-config" "$base_path/user-data"
   fi
 
   genisoimage \
