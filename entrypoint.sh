@@ -1,6 +1,6 @@
 #!/bin/ash -x
 
-BASE_IMAGE_FILE=$(readlink -f "${1:-${VM_IMAGE}}")
+BASE_IMAGE_FILE=$(readlink -f "${1:-${VM_IMAGE:-""}}")
 MEMORY=${2:-${VM_MEMORY:-512}}
 CPU=${3:-${VM_CPU:-2}}
 CLOUD_CONFIG=${4:-${VM_CLOUD_CONFIG:-""}}
@@ -26,7 +26,8 @@ main() {
     -netdev "user,id=net0,net=192.168.76.0/24,dhcpstart=192.168.76.100,hostname=name,hostfwd=tcp::2222-:22,smb=$PWD" \
     -device "virtio-net-pci,netdev=net0" \
     -netdev "bridge,id=net1,br=br0" \
-    -device "virtio-net-pci,netdev=net1" \
+    -device "virtio-net-pci,netdev=net1,bootindex=1" \
+    -boot n \
     -display vnc=:1 \
     -m "$MEMORY" \
     -smp "$CPU" \
@@ -98,13 +99,21 @@ prepare_image() {
   local image=$2
   local size=${3:-${VM_DISK_SIZE:-16G}}
 
-  qemu-img create \
-    -f qcow2 \
-    -F qcow2 \
-    -o cluster_size=2M \
-    -o "backing_file=$image" \
-    "$path" \
-    "$size"
+  if [ -n "$image" ]; then
+    qemu-img create \
+      -f qcow2 \
+      -F qcow2 \
+      -o cluster_size=2M \
+      -o "backing_file=$image" \
+      "$path" \
+      "$size"
+  else
+    qemu-img create \
+      -f qcow2 \
+      -o cluster_size=2M \
+      "$path" \
+      "$size"
+  fi
 }
 
 main "$@"
