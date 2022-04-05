@@ -44,6 +44,9 @@ main() {
     echo \
       -netdev "user,id=net0,net=192.168.101.0/24,dhcpstart=192.168.101.100,hostname=$name,hostfwd=tcp::$ssh_port-:22,smb=$PWD" \
       -device "virtio-net-pci,netdev=net0"
+    echo \
+      -fsdev local,id=fs1,path=$PWD,security_model=none \
+      -device virtio-9p-pci,fsdev=fs1,mount_tag=data
     if [ -n "$BRIDGE" ]; then
       echo -netdev "bridge,id=net1,br=$BRIDGE"
       if [ -n "$BRIDGE_PXE" ]; then
@@ -117,6 +120,8 @@ password: Passw0rd1234
 chpasswd: {expire: False}
 ssh_pwauth: True
 disable_root: True
+mounts:
+- [data, /mnt, 9p, "nofail,trans=virtio,version=9p2000.L,posixacl,msize=104857600,cache=loose"]
 EOF
   fi
 
