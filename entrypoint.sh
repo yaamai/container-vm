@@ -5,6 +5,9 @@ MEMORY=${2:-${VM_MEMORY:-512}}
 CPU=${3:-${VM_CPU:-2}}
 CLOUD_CONFIG=${4:-${VM_CLOUD_CONFIG:-""}}
 SCRIPT=${5:-${VM_SCRIPT:-""}}
+BRIDGE=${6:-${VM_BRIDGE:-""}}
+BRIDGE_PXE=${7:-${VM_BRIDGE_PXE:-""}}
+ASSIGN_PORTS=${8:-${VM_ASSIGN_PORTS:-""}}
 
 main() {
   name=$(printf "%s" "$(hostname -s)")
@@ -14,25 +17,50 @@ main() {
   prepare_cloud_config "$name" "$data_dir/cloud-config.iso" "$CLOUD_CONFIG" "$SCRIPT"
 
   if ! check_file_exists "$data_dir/instance.qcow2"; then
-    prepare_image "$data_dir/instance.qcow2" "$BASE_IMAGE_FILE"
+    prepare_image "$data_dir/instance.qcow2" "$BASE_IMAGE_FILE" "${VM_DISK_SIZE:-16G}"
   fi
 
-  qemu-system-x86_64 \
-    --enable-kvm \
-    -object iothread,id=io1 \
-    -device virtio-blk-pci,drive=disk0,iothread=io1 \
-    -drive "if=none,id=disk0,cache=none,format=qcow2,aio=threads,file=$data_dir/instance.qcow2" \
-    -cdrom "$data_dir/cloud-config.iso" \
-    -netdev "user,id=net0,net=192.168.76.0/24,dhcpstart=192.168.76.100,hostname=name,hostfwd=tcp::2222-:22,smb=$PWD" \
-    -device "virtio-net-pci,netdev=net0" \
-    -netdev "bridge,id=net1,br=br0" \
-    -device "virtio-net-pci,netdev=net1,bootindex=1" \
-    -boot n \
-    -display vnc=:1 \
-    -m "$MEMORY" \
-    -smp "$CPU" \
-    -daemonize \
-    -serial pty 2>&1 | tee "/tmp/qemu-$name-stdout.log"
+  local vnc_port=":0"
+  local ssh_port="22"
+  if [ -n "$ASSIGN_PORTS" ]; then
+    local number=$(get_hostname_number $name)
+    vnc_port=":$(($number + 10000))"
+    ssh_port="$(($number + 10022))"
+  fi
+
+  (
+    echo \
+      --enable-kvm \
+      -m "$MEMORY" \
+      -smp "$CPU" \
+      -daemonize \
+      -serial pty \
+      -display vnc=$vnc_port
+    echo \
+      -object iothread,id=io1 \
+      -device virtio-blk-pci,drive=disk0,iothread=io1 \
+      -drive "if=none,id=disk0,cache=none,format=qcow2,aio=threads,file=$data_dir/instance.qcow2" \
+      -cdrom "$data_dir/cloud-config.iso"
+    echo \
+      -netdev "user,id=net0,net=192.168.101.0/24,dhcpstart=192.168.101.100,hostname=$name,hostfwd=tcp::$ssh_port-:22,smb=$PWD" \
+      -device "virtio-net-pci,netdev=net0"
+    if [ -n "$BRIDGE" ]; then
+      echo -netdev "bridge,id=net1,br=$BRIDGE"
+      if [ -n "$BRIDGE_PXE" ]; then
+        echo \
+          -device "virtio-net-pci,netdev=net1,bootindex=1" \
+          -boot n
+      else
+        echo -device "virtio-net-pci,netdev=net1"
+      fi
+    fi
+  ) | xargs -t qemu-system-x86_64 2>&1 | tee "/tmp/qemu-$name-stdout.log"
+
+  wait_with_picom "$name"
+}
+
+wait_with_picom() {
+  local name=$1
 
   while true; do
     pty="$(grep -Eo '/dev/pts/[0-9]+' < "/tmp/qemu-$name-stdout.log")"
@@ -43,6 +71,19 @@ main() {
       break
     fi
   done
+}
+
+get_hostname_number() {
+  local name=$1
+
+  local n=$(echo $name | tr -cd 0-9)
+  if [ -n "$n" ]; then
+    echo $n
+  else
+    local t=$(printf "%d" "0x$(echo $name | sha1sum | cut -c1-2)")
+    # avoid overlap direct specified number
+    echo $(($t + 10))
+  fi
 }
 
 check_file_exists() {
@@ -97,7 +138,7 @@ EOF
 prepare_image() {
   local path=$1
   local image=$2
-  local size=${3:-${VM_DISK_SIZE:-16G}}
+  local size=$3
 
   if [ -n "$image" ]; then
     qemu-img create \
