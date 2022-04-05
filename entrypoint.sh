@@ -23,8 +23,11 @@ main() {
     -device virtio-blk-pci,drive=disk0,iothread=io1 \
     -drive "if=none,id=disk0,cache=none,format=qcow2,aio=threads,file=$data_dir/instance.qcow2" \
     -cdrom "$data_dir/cloud-config.iso" \
-    -nic "user,hostfwd=tcp::22-:22,smb=$PWD" \
-    -display vnc=:0 \
+    -netdev "user,id=net0,net=192.168.76.0/24,dhcpstart=192.168.76.100,hostname=name,hostfwd=tcp::2222-:22,smb=$PWD" \
+    -device "virtio-net-pci,netdev=net0" \
+    -netdev "bridge,id=net1,br=br0" \
+    -device "virtio-net-pci,netdev=net1" \
+    -display vnc=:1 \
     -m "$MEMORY" \
     -smp "$CPU" \
     -daemonize \
@@ -97,6 +100,7 @@ prepare_image() {
 
   qemu-img create \
     -f qcow2 \
+    -F qcow2 \
     -o cluster_size=2M \
     -o "backing_file=$image" \
     "$path" \
