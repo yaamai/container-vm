@@ -8,10 +8,12 @@ SCRIPT=${5:-${VM_SCRIPT:-""}}
 BRIDGE=${6:-${VM_BRIDGE:-""}}
 BRIDGE_PXE=${7:-${VM_BRIDGE_PXE:-""}}
 ASSIGN_PORTS=${8:-${VM_ASSIGN_PORTS:-""}}
+DHCP_HOSTS_IP=${9:-${VM_DHCP_HOSTS_IP:-"10.101.101."}}
 
 main() {
   name=$(printf "%s" "$(hostname -s)")
   data_dir=${DATA_DIR_BASE:-$PWD/vms}/$name
+  dhcp_hosts_file=${DATA_DIR_BASE:-$PWD/vms}/hosts
   mkdir -p "$data_dir"
 
   prepare_cloud_config "$name" "$data_dir/cloud-config.iso" "$CLOUD_CONFIG" "$SCRIPT"
@@ -20,13 +22,15 @@ main() {
     prepare_image "$data_dir/instance.qcow2" "$BASE_IMAGE_FILE" "${VM_DISK_SIZE:-16G}"
   fi
 
+  local number=$(get_hostname_number $name)
   local vnc_port=":0"
   local ssh_port="22"
+  local mac_addr=$(printf "52:54:00:11:%02x:%02x" $(($number/256)) $(($number%256)))
   if [ -n "$ASSIGN_PORTS" ]; then
-    local number=$(get_hostname_number $name)
     vnc_port=":$(($number + 10000))"
     ssh_port="$(($number + 10022))"
   fi
+
 
   (
     echo \
@@ -51,13 +55,17 @@ main() {
       echo -netdev "bridge,id=net1,br=$BRIDGE"
       if [ -n "$BRIDGE_PXE" ]; then
         echo \
-          -device "virtio-net-pci,netdev=net1,bootindex=1" \
+          -device "virtio-net-pci,netdev=net1,mac=$mac_addr,bootindex=1" \
           -boot n
       else
-        echo -device "virtio-net-pci,netdev=net1"
+        echo -device "virtio-net-pci,netdev=net1,mac=$mac_addr"
       fi
     fi
   ) | xargs -t qemu-system-x86_64 2>&1 | tee "/tmp/qemu-$name-stdout.log"
+
+  local ip=$(printf "${DHCP_HOSTS_IP}%d" $(($number%256)))
+  echo "${mac_addr},${ip},$name" >> $dhcp_hosts_file
+  echo ">>>> ${name} -> SSH: ${ssh_port}, VNC: ${vnc_port}, MAC: ${mac_addr}, IP: ${ip} <<<<"
 
   wait_with_picom "$name"
 }
@@ -70,7 +78,7 @@ wait_with_picom() {
     if [ ! -e "$pty" ]; then
       break
     fi
-    if picocom "$pty"; then
+    if picocom -q "$pty"; then
       break
     fi
   done
@@ -79,13 +87,15 @@ wait_with_picom() {
 get_hostname_number() {
   local name=$1
 
-  local n=$(echo $name | tr -cd 0-9)
-  if [ -n "$n" ]; then
-    echo $n
+  local suffix_num=$(echo $name | grep -Eo '[0-9]$')
+  if [ -n "$suffix_num" ]; then
+    local prefix_name_hash_num=$(printf "%d" "0x$(echo $name | sed -E 's:[0-9]$::' | sha1sum | cut -c1)")
+    echo $(($prefix_name_hash_num * 16 + $suffix_num))
   else
-    local t=$(printf "%d" "0x$(echo $name | sha1sum | cut -c1-2)")
+    local first_hash_num=$(printf "%d" "0x$(echo $name | sha1sum | cut -c1)")
+    local second_hash_num=$(printf "%d" "0x$(echo $name | sha1sum | cut -c2)")
     # avoid overlap direct specified number
-    echo $(($t + 10))
+    echo $((256 + $first_hash_num * 16 + $second_hash_num))
   fi
 }
 
