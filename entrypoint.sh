@@ -9,11 +9,13 @@ BRIDGE=${6:-${VM_BRIDGE:-""}}
 BRIDGE_PXE=${7:-${VM_BRIDGE_PXE:-""}}
 ASSIGN_PORTS=${8:-${VM_ASSIGN_PORTS:-""}}
 DHCP_HOSTS_IP=${9:-${VM_DHCP_HOSTS_IP:-"10.101.101."}}
+USERNET=${10:-${VM_USERNET:-"1"}}
 
 main() {
   name=$(printf "%s" "$(hostname -s)")
   data_dir=${DATA_DIR_BASE:-$PWD/vms}/$name
-  dhcp_hosts_file=${DATA_DIR_BASE:-$PWD/vms}/hosts
+  mkdir -p $PWD/dnsmasq/hosts
+  dhcp_hosts_file=$PWD/dnsmasq/hosts/$name
   mkdir -p "$data_dir"
 
   prepare_cloud_config "$name" "$data_dir/cloud-config.iso" "$CLOUD_CONFIG" "$SCRIPT"
@@ -45,9 +47,11 @@ main() {
       -device virtio-blk-pci,drive=disk0,iothread=io1 \
       -drive "if=none,id=disk0,cache=none,format=qcow2,aio=threads,file=$data_dir/instance.qcow2" \
       -cdrom "$data_dir/cloud-config.iso"
-    echo \
-      -netdev "user,id=net0,net=192.168.101.0/24,dhcpstart=192.168.101.100,hostname=$name,hostfwd=tcp::$ssh_port-:22,smb=$PWD" \
-      -device "virtio-net-pci,netdev=net0"
+    if [ -n "$USERNET" -a $(($USERNET)) -ne 0 ]; then
+      echo \
+        -netdev "user,id=net0,net=192.168.101.0/24,dhcpstart=192.168.101.100,hostname=$name,hostfwd=tcp::$ssh_port-:22,smb=$PWD,dns=10.101.101.1" \
+        -device "virtio-net-pci,netdev=net0"
+    fi
     echo \
       -fsdev local,id=fs1,path=$PWD,security_model=none \
       -device virtio-9p-pci,fsdev=fs1,mount_tag=data
@@ -64,7 +68,7 @@ main() {
   ) | xargs -t qemu-system-x86_64 2>&1 | tee "/tmp/qemu-$name-stdout.log"
 
   local ip=$(printf "${DHCP_HOSTS_IP}%d" $(($number%256)))
-  echo "${mac_addr},${ip},$name" >> $dhcp_hosts_file
+  echo "${mac_addr},${ip},$name" > $dhcp_hosts_file
   echo ">>>> ${name} -> SSH: ${ssh_port}, VNC: ${vnc_port}, MAC: ${mac_addr}, IP: ${ip} <<<<"
 
   wait_with_picom "$name"
